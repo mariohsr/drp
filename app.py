@@ -1,58 +1,88 @@
 import streamlit as st
 import pandas as pd
+import google.generativeai as genai
+from PIL import Image
+import io
 
-st.set_page_config(page_title="Calculadora de KPIs Operacionais", layout="wide")
+# Configuração da Página
+st.set_page_config(page_title="Painel DRP - Inteligente", layout="wide")
 
-st.title("📊 Painel de Indicadores Operacionais")
-st.markdown("Insira os dados abaixo para calcular os KPIs conforme a tabela padrão.")
+st.title("📊 Calculadora DRP: Leitura de Print + KPIs")
+st.markdown("Suba o print da sua tabela e o sistema extrairá os dados e calculará os indicadores automaticamente.")
 
-# Organizando a entrada de dados em colunas para facilitar a visualização
+# Configuração da API Key (Deve ser inserida nos Secrets do Streamlit ou no Sidebar)
 with st.sidebar:
-    st.header("📥 Dados de Entrada")
+    st.header("Configuração")
+    api_key = st.text_input("Insira sua Gemini API Key:", type="password")
+    st.info("Obtenha uma chave gratuita em: aistudio.google.com")
+
+# --- FUNÇÃO DE PROCESSAMENTO DE IMAGEM ---
+def extrair_dados_com_ai(image_bytes, key):
+    genai.configure(api_key=key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
-    st.subheader("Custos (Sem Intercompany)")
-    custo_orcado = st.number_input("Custo Orçado", value=416861.0)
-    custo_realizado = st.number_input("Custo Realizado", value=529585.0)
-    faixas_operacao = st.number_input("Quant. Faixas em Operação", value=265)
-    
-    st.subheader("Receitas e Margem")
-    receita_liq_plano = st.number_input("Receita Líquida Plano", value=1776337.0)
-    custo_operacional = st.number_input("Custo Operacional", value=529585.0)
-    receita_bruta_plano = st.number_input("Receita Bruta Plano", value=2050000.0)
-    receita_bruta_orcada = st.number_input("Receita Bruta Orçada", value=2071530.0)
-    
-    st.subheader("Glosas e Faturamento")
-    valor_glosa = st.number_input("Valor Glosa", value=87715.17)
-    valor_max_full = st.number_input("Valor Máximo/Full", value=2195651.99)
-    valor_fatura_mensal = st.number_input("Valor da Fatura Mensal", value=2000000.0)
-    valor_imagens_validas = st.number_input("Valor Imagens Válidas", value=1500000.0)
-    custos_fixos = st.number_input("Custos Fixos", value=500000.0)
+    prompt = """
+    Analise a imagem desta tabela e extraia os seguintes valores numéricos. 
+    Responda APENAS no formato de dicionário Python, sem textos extras:
+    {
+        'custo_orcado': valor,
+        'custo_realizado': valor,
+        'faixas_operacao': valor,
+        'receita_liq_realizada': valor,
+        'receita_bruta_planejada': valor,
+        'receita_bruta_realizada': valor,
+        'valor_glosa': valor,
+        'valor_max_full': valor,
+        'valor_imagens_validas': valor,
+        'custos_fixos': valor,
+        'valor_fatura_mensal': valor
+    }
+    """
+    img = Image.open(io.BytesIO(image_bytes))
+    response = model.generate_content([prompt, img])
+    return eval(response.text.replace("```python", "").replace("```", ""))
 
-# Lógica de Cálculo baseada na IMAGEM
-# ----------------------------------
-kpis = {}
-# 1. % Atingimento Custo
-kpis['1. % Atingimento Custo Orçado'] = (custo_realizado / custo_orcado) * 100
-# 2. Valor por Faixa Operada
-kpis['2. Valor por Faixa Operada'] = custo_realizado / faixas_operacao
-# 3. Margem de Contribuição %
-kpis['3. Margem de Contribuição %'] = ((receita_liq_plano - custo_operacional) / receita_liq_plano) * 100
-# 4. % Atingimento Receita Orçada
-kpis['4. % Atingimento Receita Orçada'] = (receita_bruta_plano / receita_bruta_orcada) * 100
-# 5. % Glosa nas medições
-kpis['5. % Glosa nas medições'] = (valor_glosa / valor_max_full) * 100
-# 14. % Arrecadação
-kpis['14. % Arrecadação'] = ((valor_imagens_validas - custos_fixos) / valor_fatura_mensal) * 100
+# --- INTERFACE DE UPLOAD ---
+uploaded_file = st.file_uploader("Arraste o print da tabela aqui", type=["png", "jpg", "jpeg"])
 
-# Exibição
-st.header("📋 Relatório de Indicadores")
-df_res = pd.DataFrame(list(kpis.items()), columns=['Indicador', 'Resultado Calculado'])
+if uploaded_file and api_key:
+    with st.spinner("Analisando imagem com IA..."):
+        try:
+            dados = extrair_dados_com_ai(uploaded_file.getvalue(), api_key)
+            st.success("Dados extraídos com sucesso!")
+            
+            # --- CÁLCULOS DOS 14 INDICADORES ---
+            resultados = []
+            
+            # 1. % Atingimento Custo
+            ating_custo = (dados['custo_realizado'] / dados['custo_orcado']) * 100
+            resultados.append(["1. % Atingimento Custo Orçado", f"{ating_custo:.2f}%", "95%"])
+            
+            # 2. Valor por Faixa
+            v_faixa = dados['custo_realizado'] / dados['faixas_operacao']
+            resultados.append(["2. Valor por Faixa Operada", f"R$ {v_faixa:,.2f}", "MENSUAL"])
+            
+            # 3. Margem de Contribuição
+            margem = ((dados['receita_liq_realizada'] - dados['custo_realizado']) / dados['receita_liq_realizada']) * 100
+            resultados.append(["3. Margem de Contribuição %", f"{margem:.2f}%", "MENSUAL"])
+            
+            # 4. Atingimento Receita
+            ating_rec = (dados['receita_bruta_planejada'] / dados['receita_bruta_realizada']) * 100
+            resultados.append(["4. % Atingimento Receita Orçada", f"{ating_rec:.2f}%", "100%"])
+            
+            # 5. % Glosa
+            perc_glosa = (dados['valor_glosa'] / dados['valor_max_full']) * 100
+            resultados.append(["5. % Glosa nas medições", f"{perc_glosa:.2f}%", "CONTRATO"])
 
-# Formatação visual
-st.table(df_res.style.format({"Resultado Calculado": "{:.2f}"}))
+            # 14. % Arrecadação
+            arrecadacao = ((dados['valor_imagens_validas'] - dados['custos_fixos']) / dados['valor_fatura_mensal']) * 100
+            resultados.append(["14. % Arrecadação", f"{arrecadacao:.2f}%", "30%"])
 
-# Destaques em cards
-c1, c2, c3 = st.columns(3)
-c1.metric("Atingimento Custo", f"{kpis['1. % Atingimento Custo Orçado']:.2f}%", delta_color="inverse")
-c2.metric("Margem Contribuição", f"{kpis['3. Margem de Contribuição %']:.2f}%")
-c3.metric("Glosa", f"{kpis['5. % Glosa nas medições']:.2f}%", delta_color="inverse")
+            # Exibição em Tabela
+            df_final = pd.DataFrame(resultados, columns=["Indicador", "Resultado", "Meta"])
+            st.table(df_final)
+            
+        except Exception as e:
+            st.error(f"Erro ao processar: {e}")
+elif not api_key and uploaded_file:
+    st.warning("Por favor, insira a API Key no menu lateral para processar a imagem.")
