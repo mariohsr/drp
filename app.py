@@ -12,7 +12,7 @@ st.markdown("Extração automática de dados via IA e cálculo de KPIs operacion
 
 # --- CONFIGURAÇÃO DA API KEY ---
 # Cole sua chave entre as aspas abaixo
-API_KEY = "SUA_API_KEY_AQUI" 
+API_KEY = "AIzaSyCoukP-PYLiDw6BMFfKsf--nD3JW72TBFo" 
 
 def analisar_print(image_bytes, key):
     # Inicializa o cliente conforme seu exemplo
