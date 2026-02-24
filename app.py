@@ -88,3 +88,12 @@ if uploaded_file:
 
     except Exception as e:
         st.error(f"Erro ao processar: {e}")
+try:
+    with st.spinner("IA analisando a imagem..."):
+        d = analisar_print(uploaded_file.getvalue(), API_KEY)
+    st.success("Dados extraídos!")
+except Exception as e:
+    if "429" in str(e):
+        st.error("⚠️ Limite de uso atingido. Por favor, aguarde 60 segundos e tente carregar o print novamente.")
+    else:
+        st.error(f"Erro ao processar: {e}")
