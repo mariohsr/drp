@@ -4,85 +4,98 @@ import google.generativeai as genai
 from PIL import Image
 import io
 
-# Configuração da Página
-st.set_page_config(page_title="Painel DRP - Inteligente", layout="wide")
+st.set_page_config(page_title="Gestão DRP - Inteligente", layout="wide")
 
+# Interface Principal
 st.title("📊 Calculadora DRP: Leitura de Print + KPIs")
-st.markdown("Suba o print da sua tabela e o sistema extrairá os dados e calculará os indicadores automaticamente.")
+st.markdown("Extraia dados de prints e calcule os 14 indicadores automaticamente.")
 
-# Configuração da API Key (Deve ser inserida nos Secrets do Streamlit ou no Sidebar)
+# Configuração da API no Sidebar
 with st.sidebar:
-    st.header("Configuração")
+    st.header("⚙️ Configuração")
     api_key = st.text_input("Insira sua Gemini API Key:", type="password")
     st.info("Obtenha uma chave gratuita em: aistudio.google.com")
 
-# --- FUNÇÃO DE PROCESSAMENTO DE IMAGEM ---
-def extrair_dados_com_ai(image_bytes, key):
+# Função para Processar Imagem com IA
+def analisar_tabela(image_bytes, key):
     genai.configure(api_key=key)
     model = genai.GenerativeModel('gemini-1.5-flash')
     
     prompt = """
-    Analise a imagem desta tabela e extraia os seguintes valores numéricos. 
-    Responda APENAS no formato de dicionário Python, sem textos extras:
+    Aja como um analista de dados. Extraia os seguintes valores desta tabela de indicadores. 
+    Retorne APENAS um dicionário Python válido:
     {
-        'custo_orcado': valor,
-        'custo_realizado': valor,
-        'faixas_operacao': valor,
-        'receita_liq_realizada': valor,
-        'receita_bruta_planejada': valor,
-        'receita_bruta_realizada': valor,
-        'valor_glosa': valor,
-        'valor_max_full': valor,
-        'valor_imagens_validas': valor,
-        'custos_fixos': valor,
-        'valor_fatura_mensal': valor
+        "custo_orcado": float,
+        "custo_realizado": float,
+        "faixas_operacao": int,
+        "receita_liq_plano": float,
+        "receita_bruta_plano": float,
+        "receita_bruta_orcada": float,
+        "valor_glosa": float,
+        "valor_max_full": float,
+        "dias_operacao": int,
+        "dias_maximos_mes": int,
+        "imagens_aproveitadas": int,
+        "imagens_capturadas": int,
+        "data_fechamento": "YYYY-MM-DD",
+        "data_protocolo": "YYYY-MM-DD",
+        "envios_prazo": int,
+        "documentos_necessarios": int,
+        "faixas_reprovadas": int,
+        "total_verificacoes": int,
+        "valor_imagens_validas": float,
+        "custos_fixos": float,
+        "valor_fatura_mensal": float
     }
     """
     img = Image.open(io.BytesIO(image_bytes))
     response = model.generate_content([prompt, img])
-    return eval(response.text.replace("```python", "").replace("```", ""))
+    # Limpeza simples para garantir que o eval funcione
+    texto_limpo = response.text.replace("```python", "").replace("```", "").strip()
+    return eval(texto_limpo)
 
-# --- INTERFACE DE UPLOAD ---
+# Upload do Arquivo
 uploaded_file = st.file_uploader("Arraste o print da tabela aqui", type=["png", "jpg", "jpeg"])
 
 if uploaded_file and api_key:
-    with st.spinner("Analisando imagem com IA..."):
-        try:
-            dados = extrair_dados_com_ai(uploaded_file.getvalue(), api_key)
-            st.success("Dados extraídos com sucesso!")
-            
-            # --- CÁLCULOS DOS 14 INDICADORES ---
-            resultados = []
-            
-            # 1. % Atingimento Custo
-            ating_custo = (dados['custo_realizado'] / dados['custo_orcado']) * 100
-            resultados.append(["1. % Atingimento Custo Orçado", f"{ating_custo:.2f}%", "95%"])
-            
-            # 2. Valor por Faixa
-            v_faixa = dados['custo_realizado'] / dados['faixas_operacao']
-            resultados.append(["2. Valor por Faixa Operada", f"R$ {v_faixa:,.2f}", "MENSUAL"])
-            
-            # 3. Margem de Contribuição
-            margem = ((dados['receita_liq_realizada'] - dados['custo_realizado']) / dados['receita_liq_realizada']) * 100
-            resultados.append(["3. Margem de Contribuição %", f"{margem:.2f}%", "MENSUAL"])
-            
-            # 4. Atingimento Receita
-            ating_rec = (dados['receita_bruta_planejada'] / dados['receita_bruta_realizada']) * 100
-            resultados.append(["4. % Atingimento Receita Orçada", f"{ating_rec:.2f}%", "100%"])
-            
-            # 5. % Glosa
-            perc_glosa = (dados['valor_glosa'] / dados['valor_max_full']) * 100
-            resultados.append(["5. % Glosa nas medições", f"{perc_glosa:.2f}%", "CONTRATO"])
+    try:
+        with st.spinner("IA Analisando o print..."):
+            d = analisar_tabela(uploaded_file.getvalue(), api_key)
+        
+        st.success("Dados extraídos!")
+        
+        # --- Lógica de Cálculo dos 14 KPIs ---
+        kpis = []
+        # 1 a 5 (Financeiros)
+        kpis.append(["1. % Atingimento Custo Orçado", f"{(d['custo_realizado']/d['custo_orcado'])*100:.2f}%", "95%"])
+        kpis.append(["2. Valor por Faixa Operada", f"R$ {d['custo_realizado']/d['faixas_operacao']:,.2f}", "MENSUAL"])
+        kpis.append(["3. Margem de Contribuição %", f"{((d['receita_liq_plano'] - d['custo_realizado'])/d['receita_liq_plano'])*100:.2f}%", "MENSUAL"])
+        kpis.append(["4. % Atingimento Receita Orçada", f"{(d['receita_bruta_plano']/d['receita_bruta_orcada'])*100:.2f}%", "100%"])
+        kpis.append(["5. % Glosa nas medições", f"{(d['valor_glosa']/d['valor_max_full'])*100:.2f}%", "CONTRATO"])
+        
+        # 6 a 13 (Operacionais)
+        kpis.append(["6. % Disponibilidade", f"{(d['dias_operacao']/d['dias_maximos_mes'])*100:.2f}%", "95%"])
+        kpis.append(["7. % Aproveitamento", f"{(d['imagens_aproveitadas']/d['imagens_capturadas'])*100:.2f}%", "90%"])
+        
+        # Diferença de datas para item 8
+        d1 = pd.to_datetime(d['data_fechamento'])
+        d2 = pd.to_datetime(d['data_protocolo'])
+        dias_prot = (d2 - d1).days
+        kpis.append(["8. Dias para protocolo", f"{dias_prot} dias", "15 dias"])
+        
+        kpis.append(["9. Prazo de Aprovação", "0 Dias (Detran-PA)", "30/45/60"])
+        kpis.append(["10. % Atendimento Calendário", f"{(d['envios_prazo']/d['documentos_necessarios'])*100:.2f}%", "100%"])
+        kpis.append(["11. % Reprovação Aferições", f"{(d['faixas_reprovadas']/d['total_verificacoes'])*100:.2f}%", "2%"])
+        kpis.append(["12. % Tempo Resolução", "Aguardando Dados", "95%"])
+        kpis.append(["13. Tempo Aprovação Registros", "Aguardando Dados", "3 dias"])
+        
+        # 14 (Arrecadação)
+        arrec = ((d['valor_imagens_validas'] - d['custos_fixos']) / d['valor_fatura_mensal']) * 100
+        kpis.append(["14. % Arrecadação", f"{arrec:.2f}%", "30%"])
 
-            # 14. % Arrecadação
-            arrecadacao = ((dados['valor_imagens_validas'] - dados['custos_fixos']) / dados['valor_fatura_mensal']) * 100
-            resultados.append(["14. % Arrecadação", f"{arrecadacao:.2f}%", "30%"])
+        # Exibição
+        df_final = pd.DataFrame(kpis, columns=["Indicador", "Resultado", "Meta"])
+        st.table(df_final)
 
-            # Exibição em Tabela
-            df_final = pd.DataFrame(resultados, columns=["Indicador", "Resultado", "Meta"])
-            st.table(df_final)
-            
-        except Exception as e:
-            st.error(f"Erro ao processar: {e}")
-elif not api_key and uploaded_file:
-    st.warning("Por favor, insira a API Key no menu lateral para processar a imagem.")
+    except Exception as e:
+        st.error(f"Erro ao processar imagem. Verifique se a API Key é válida. Detalhe: {e}")
