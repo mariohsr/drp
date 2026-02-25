@@ -5,7 +5,7 @@ from PIL import Image
 import io
 
 # Configuração da Página para o projeto DRP - Mario (Estácio)
-st.set_page_config(page_title="Gestão DRP - Estável", layout="wide")
+st.set_page_config(page_title="Painel DRP - Estável", layout="wide")
 
 st.title("📊 Painel de Indicadores DRP")
 st.markdown("Extração automática via **Gemini 1.5 Flash** ou Inserção Manual (Plano B).")
@@ -32,7 +32,7 @@ def analisar_print(image_bytes, key):
     """
     img = Image.open(io.BytesIO(image_bytes))
     
-    # Atualizado para o modelo estável para evitar erro 404
+    # Atualizado para o modelo estável para evitar erros de versão
     response = client.models.generate_content(
         model="gemini-1.5-flash", 
         contents=[prompt, img]
@@ -42,78 +42,66 @@ def analisar_print(image_bytes, key):
     return eval(texto_limpo)
 
 def gerar_tabela_kpis(d):
-    """Lógica de cálculo baseada na sua tabela de metas oficial"""
+    """Lógica de cálculo baseada na tabela de indicadores oficial"""
     kpis = []
     try:
-        # 1. % Atingimento Custo
+        # Indicadores conforme a tabela enviada
         kpis.append(["1", "% Atingimento do Custo Orçado", f"{(d['custo_realizado']/d['custo_orcado'])*100:.2f}%", "95%"])
-        # 2. Valor por Faixa
         kpis.append(["2", "Valor por Faixa Operada", f"R$ {d['custo_realizado']/d['faixas_operacao']:,.2f}", "MENSUAL"])
-        # 3. Margem de Contribuição %
         margem = ((d['receita_liq_plano'] - d['custo_realizado']) / d['receita_liq_plano']) * 100
         kpis.append(["3", "Margem de Contribuição %", f"{margem:.2f}%", "MENSUAL"])
-        # 4. % Atingimento Receita
         kpis.append(["4", "% Atingimento da Receita Orçada", f"{(d['receita_bruta_plano']/d['receita_bruta_orcada'])*100:.2f}%", "100%"])
-        # 5. % Glosa
         kpis.append(["5", "% Glosa nas medições", f"{(d['valor_glosa']/d['valor_max_full'])*100:.2f}%", "CONTRATO"])
-        # 6. % Disponibilidade
         kpis.append(["6", "% Disponibilidade", f"{(d['dias_operacao']/d['dias_maximos_mes'])*100:.2f}%", "95%"])
-        # 7. % Aproveitamento
         kpis.append(["7", "% Aproveitamento", f"{(d['imagens_aproveitadas']/d['imagens_capturadas'])*100:.2f}%", "90%"])
-        # 8. Dias para protocolo
+        
+        # Cálculo de dias para protocolo
         d1, d2 = pd.to_datetime(d['data_fechamento']), pd.to_datetime(d['data_protocolo'])
         kpis.append(["8", "Dias para protocolo da medição", f"{(d2 - d1).days} Dias", "15 Dias"])
-        # 14. % Arrecadação
-        arrec = ((d['valor_imagens_validas'] - d['custos_fixos']) / d['valor_fatura_mensal']) * 100
-        kpis.append(["14", "% Arrecadação", f"{arrec:.2f}%", "30%"])
+        
+        kpis.append(["14", "% Arrecadação", f"{((d['valor_imagens_validas']-d['custos_fixos'])/d['valor_fatura_mensal'])*100:.2f}%", "30%"])
         return kpis
     except Exception: return None
 
-# --- INTERFACE EM ABAS ---
+# --- ESTRUTURA DE ABAS ---
 tab_ia, tab_manual = st.tabs(["📸 Preencher por Imagem", "⌨️ Inserção Manual (Plano B)"])
 
 with tab_ia:
-    st.subheader("Upload de Print")
-    uploaded_file = st.file_uploader("Arraste o print da tabela aqui", type=["png", "jpg", "jpeg"], key="ia_uploader")
+    uploaded_file = st.file_uploader("Arraste o print da tabela aqui", type=["png", "jpg", "jpeg"])
     if uploaded_file:
         try:
             with st.spinner("IA analisando imagem..."):
                 dados = analisar_print(uploaded_file.getvalue(), API_KEY)
                 res = gerar_tabela_kpis(dados)
                 if res: 
-                    st.success("Dados extraídos com sucesso!")
+                    st.success("Cálculos concluídos com sucesso!")
                     st.table(pd.DataFrame(res, columns=["Nº", "Indicador", "Resultado", "Meta"]))
         except Exception as e:
             if "429" in str(e): 
-                st.error("⚠️ Cota de IA atingida. Por favor, use a aba 'Inserção Manual'.")
-            elif "404" in str(e):
-                st.error("❌ Erro de versão do modelo. O código já foi ajustado para Gemini 1.5.")
+                st.error("⚠️ Limite de IA atingido. Por favor, utilize a aba 'Inserção Manual'.")
             else: 
-                st.error(f"Erro: {e}")
+                st.error(f"Erro no processamento: {e}")
 
 with tab_manual:
-    st.subheader("Entrada Manual (Plano B)")
+    st.subheader("Entrada de Dados Manual")
     col1, col2 = st.columns(2)
     with col1:
-        c_orc = st.number_input("Custo Orçado (Sem Intercompany)", value=416861.0)
-        c_real = st.number_input("Custo Realizado (Sem Intercompany)", value=529585.0)
-        faixas = st.number_input("Quantidade de Faixas em Operação", value=265)
-        rec_liq = st.number_input("Receita Líquida Realizada", value=1776337.0)
+        c_orc = st.number_input("Custo Orçado", value=416861.0)
+        c_real = st.number_input("Custo Realizado", value=529585.0)
+        faixas = st.number_input("Faixas em Operação", value=265)
     with col2:
-        v_glosa = st.number_input("Valor da Glosa Aplicada", value=87715.17)
-        v_max = st.number_input("Valor Máximo / Full do Contrato", value=2195651.99)
-        d_op = st.number_input("Dias Efetivos em Operação", value=28)
-        d_mes = st.number_input("Dias Totais do Mês", value=30)
+        v_glosa = st.number_input("Valor Glosa", value=87715.17)
+        v_max = st.number_input("Valor Máximo/Full", value=2195651.99)
+        d_op = st.number_input("Dias em Operação", value=28)
     
     if st.button("Calcular Manualmente"):
-        # Dicionário formatado para reaproveitar a lógica de cálculo
+        # Dicionário padrão para simular a extração da IA
         d_man = {
             "custo_orcado": c_orc, "custo_realizado": c_real, "faixas_operacao": faixas,
-            "receita_liq_plano": rec_liq, "receita_bruta_plano": 2050000.0, "receita_bruta_orcada": 2071530.0,
-            "valor_glosa": v_glosa, "valor_max_full": v_max, "dias_operacao": d_op, "dias_maximos_mes": d_mes,
+            "receita_liq_plano": 1776337.0, "receita_bruta_plano": 2050000.0, "receita_bruta_orcada": 2071530.0,
+            "valor_glosa": v_glosa, "valor_max_full": v_max, "dias_operacao": d_op, "dias_maximos_mes": 30,
             "imagens_aproveitadas": 93, "imagens_capturadas": 100, "data_fechamento": "2025-02-01", 
             "data_protocolo": "2025-02-17", "valor_imagens_validas": 1500000.0, "custos_fixos": 500000.0, "valor_fatura_mensal": 2000000.0
         }
         res_m = gerar_tabela_kpis(d_man)
-        if res_m:
-            st.table(pd.DataFrame(res_m, columns=["Nº", "Indicador", "Resultado", "Meta"]))
+        st.table(pd.DataFrame(res_m, columns=["Nº", "Indicador", "Resultado", "Meta"]))
