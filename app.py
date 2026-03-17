@@ -11,7 +11,7 @@ st.title("📊 Painel de Indicadores DRP")
 st.markdown("Escolha entre o preenchimento automático por IA ou a inserção manual (Plano B).")
 
 # --- CONFIGURAÇÃO DA API KEY INTEGRADA ---
-API_KEY = "AIzaSyDD9qDgYMsqxLQKW3RQvoY7r98FDf8qXcU" 
+API_KEY = "xxx" 
 
 def analisar_print(image_bytes, key):
     """Função para extrair dados da imagem usando o modelo estável 1.5 Flash"""
@@ -31,8 +31,8 @@ def analisar_print(image_bytes, key):
     }
     """
     img = Image.open(io.BytesIO(image_bytes))
-    
-    # Modelo estável para evitar o erro 404
+
+    #Evitar error 404
     response = client.models.generate_content(
         model="gemini-1.5-flash", 
         contents=[prompt, img]
